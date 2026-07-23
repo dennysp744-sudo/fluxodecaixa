@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Fluxo de Caixa - Barraquinha</title>
 
-<!-- Firebase (banco de dados em tempo real, gratuito) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<!-- Supabase (banco de dados em tempo real, gratuito, sem cartão) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <style>
   :root {
@@ -211,7 +210,7 @@
 </header>
 
 <div id="avisoConfig" class="setup-aviso" style="display:none;">
-  ⚠️ Configure o Firebase no código (procure por <b>FIREBASE_CONFIG</b> no arquivo) para ativar a sincronização em tempo real entre os aparelhos.
+  ⚠️ Configure o Supabase no código (procure por <b>SUPABASE_URL</b> no arquivo) para ativar a sincronização em tempo real entre os aparelhos.
 </div>
 
 <div class="saldo-card">
@@ -264,49 +263,58 @@
 
 <script>
 /* =========================================================
-   1) CONFIGURAÇÃO DO FIREBASE
+   1) CONFIGURAÇÃO DO SUPABASE
    -----------------------------------------------------
    Para os dados serem compartilhados EM TEMPO REAL entre
-   todos que acessarem o site, você precisa criar um projeto
-   gratuito no Firebase e colar as chaves abaixo.
+   todos que acessarem o site, você precisa de um projeto
+   gratuito no Supabase (não pede cartão de crédito).
 
    PASSO A PASSO:
-   1. Acesse https://console.firebase.google.com
-   2. Clique em "Adicionar projeto" (é grátis)
-   3. Dentro do projeto, vá em "Compilação" > "Firestore Database"
-      e clique em "Criar banco de dados" (escolha modo de teste)
-   4. Vá em "Configurações do projeto" (ícone de engrenagem) >
-      role até "Seus apps" > clique no ícone "</>" (Web)
-   5. Dê um nome ao app e clique em "Registrar app"
-   6. Copie o objeto firebaseConfig que aparecer e cole abaixo,
-      substituindo o objeto de exemplo.
-   ========================================================= */
-const FIREBASE_CONFIG = {
-  apiKey: "COLE_AQUI",
-  authDomain: "COLE_AQUI.firebaseapp.com",
-  projectId: "COLE_AQUI",
-  storageBucket: "COLE_AQUI.appspot.com",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI"
-};
+   1. Acesse https://supabase.com e crie o projeto "barraquinha"
+   2. No menu lateral, clique no ícone "SQL Editor"
+   3. Clique em "New query" e cole o comando abaixo, depois
+      clique em "Run":
 
-let db = null;
-let firebaseAtivo = false;
+      create table movimentos (
+        id uuid default gen_random_uuid() primary key,
+        descricao text not null,
+        valor numeric not null,
+        tipo text not null,
+        timestamp bigint not null
+      );
+
+      alter table movimentos enable row level security;
+
+      create policy "Acesso publico total"
+      on movimentos for all
+      using (true)
+      with check (true);
+
+   4. No menu lateral, clique em "Project Settings" (ícone de
+      engrenagem) > "Data API"
+   5. Copie o "Project URL" e cole em SUPABASE_URL abaixo
+   6. Copie a chave "anon public" e cole em SUPABASE_ANON_KEY
+      (ela fica em "Project API Keys", nessa mesma página)
+   ========================================================= */
+const SUPABASE_URL = "COLE_AQUI";
+const SUPABASE_ANON_KEY = "COLE_AQUI";
+
+let supabaseClient = null;
+let supabaseAtivo = false;
 
 try {
-  if (FIREBASE_CONFIG.apiKey !== "COLE_AQUI") {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    firebaseAtivo = true;
+  if (SUPABASE_URL !== "COLE_AQUI" && SUPABASE_ANON_KEY !== "COLE_AQUI") {
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseAtivo = true;
   } else {
     document.getElementById('avisoConfig').style.display = 'block';
   }
 } catch (e) {
-  console.error("Erro ao iniciar Firebase:", e);
+  console.error("Erro ao iniciar Supabase:", e);
   document.getElementById('avisoConfig').style.display = 'block';
 }
 
-const COLECAO = "movimentos";
+const TABELA = "movimentos";
 
 /* =========================================================
    2) PRODUTOS DA BARRAQUINHA (edite como quiser)
@@ -377,7 +385,7 @@ function adicionarManual() {
   document.getElementById('valorInput').value = '';
 }
 
-function adicionarMovimento(descricao, valor, tipo) {
+async function adicionarMovimento(descricao, valor, tipo) {
   const mov = {
     descricao,
     valor: Math.abs(valor),
@@ -385,13 +393,14 @@ function adicionarMovimento(descricao, valor, tipo) {
     timestamp: Date.now()
   };
 
-  if (firebaseAtivo) {
-    db.collection(COLECAO).add(mov).catch(e => {
-      console.error(e);
+  if (supabaseAtivo) {
+    const { error } = await supabaseClient.from(TABELA).insert(mov);
+    if (error) {
+      console.error(error);
       alert('Erro ao salvar. Verifique sua conexão.');
-    });
+    }
   } else {
-    // Modo local (sem Firebase configurado) - fica só neste aparelho
+    // Modo local (sem Supabase configurado) - fica só neste aparelho
     const locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
     mov.id = 'local-' + Date.now();
     locais.unshift(mov);
@@ -400,10 +409,14 @@ function adicionarMovimento(descricao, valor, tipo) {
   }
 }
 
-function excluirMovimento(id) {
+async function excluirMovimento(id) {
   if (!confirm('Excluir este lançamento?')) return;
-  if (firebaseAtivo) {
-    db.collection(COLECAO).doc(id).delete();
+  if (supabaseAtivo) {
+    const { error } = await supabaseClient.from(TABELA).delete().eq('id', id);
+    if (error) {
+      console.error(error);
+      alert('Erro ao excluir. Verifique sua conexão.');
+    }
   } else {
     let locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
     locais = locais.filter(m => m.id !== id);
@@ -463,19 +476,37 @@ function renderTudo(movimentos) {
    ========================================================= */
 const statusEl = document.getElementById('statusConexao');
 
-if (firebaseAtivo) {
-  db.collection(COLECAO).onSnapshot(snapshot => {
-    const movimentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    renderTudo(movimentos);
-    statusEl.textContent = 'sincronizado em tempo real';
-    statusEl.className = 'status online';
-  }, err => {
-    console.error(err);
+async function carregarMovimentos() {
+  const { data, error } = await supabaseClient.from(TABELA).select('*');
+  if (error) {
+    console.error(error);
     statusEl.textContent = 'erro de conexão';
     statusEl.className = 'status offline';
-  });
+    return;
+  }
+  renderTudo(data);
+  statusEl.textContent = 'sincronizado em tempo real';
+  statusEl.className = 'status online';
+}
+
+if (supabaseAtivo) {
+  // Carrega os dados já existentes
+  carregarMovimentos();
+
+  // Escuta em tempo real qualquer inserção/exclusão feita por qualquer aparelho
+  supabaseClient
+    .channel('movimentos-tempo-real')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABELA }, () => {
+      carregarMovimentos();
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        statusEl.textContent = 'sincronizado em tempo real';
+        statusEl.className = 'status online';
+      }
+    });
 } else {
-  statusEl.textContent = 'modo local (configure o Firebase para sincronizar entre aparelhos)';
+  statusEl.textContent = 'modo local (configure o Supabase para sincronizar entre aparelhos)';
   statusEl.className = 'status offline';
   const locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
   renderTudo(locais);
