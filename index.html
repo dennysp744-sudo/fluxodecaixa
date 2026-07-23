@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Fluxo de Caixa - Barraquinha</title>
+
+<!-- Firebase (banco de dados em tempo real, gratuito) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-2: #273548;
+    --green: #22c55e;
+    --red: #ef4444;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 40px;
+  }
+  header {
+    padding: 20px 16px 10px;
+    text-align: center;
+  }
+  header h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .saldo-card {
+    margin: 12px 16px;
+    background: linear-gradient(135deg, #1e293b, #0f2942);
+    border-radius: 20px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #334155;
+  }
+  .saldo-label { color: var(--muted); font-size: 13px; }
+  .saldo-valor { font-size: 40px; font-weight: 800; margin: 4px 0; }
+
+  .resumo {
+    display: flex;
+    gap: 10px;
+    margin: 14px 16px;
+  }
+  .resumo-item {
+    flex: 1;
+    background: var(--card);
+    border-radius: 14px;
+    padding: 12px;
+    text-align: center;
+  }
+  .resumo-item .lbl { font-size: 12px; color: var(--muted); }
+  .resumo-item .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .entradas .val { color: var(--green); }
+  .saidas .val { color: var(--red); }
+
+  section {
+    margin: 20px 16px 0;
+  }
+  section h2 {
+    font-size: 15px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .produtos {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .produto-btn {
+    background: var(--card);
+    border: 1px solid #334155;
+    color: var(--text);
+    border-radius: 14px;
+    padding: 14px 8px;
+    font-size: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .produto-btn:active { transform: scale(0.95); background: var(--card-2); }
+  .produto-btn .nome { font-weight: 600; }
+  .produto-btn .preco { color: var(--green); font-size: 13px; margin-top: 2px; }
+
+  .gerenciar-produtos {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--accent);
+    text-align: right;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  .form-manual {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .form-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  input, select {
+    flex: 1;
+    background: var(--card-2);
+    border: 1px solid #334155;
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .tipo-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .tipo-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid #334155;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .tipo-btn.entrada-ativo { background: rgba(34,197,94,0.2); border-color: var(--green); color: var(--green); }
+  .tipo-btn.saida-ativo { background: rgba(239,68,68,0.2); border-color: var(--red); color: var(--red); }
+
+  .btn-add {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .btn-add:active { opacity: 0.8; }
+
+  .lista {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .item {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .item .desc { font-size: 14px; }
+  .item .hora { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .item .valor { font-weight: 700; font-size: 15px; }
+  .item .valor.entrada { color: var(--green); }
+  .item .valor.saida { color: var(--red); }
+  .item .del {
+    color: var(--muted);
+    font-size: 18px;
+    margin-left: 10px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  .vazio { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
+
+  .status {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+  .status.online::before { content: "● "; color: var(--green); }
+  .status.offline::before { content: "● "; color: var(--red); }
+
+  .setup-aviso {
+    margin: 16px;
+    padding: 14px;
+    background: #422006;
+    border: 1px solid #92400e;
+    border-radius: 12px;
+    font-size: 13px;
+    color: #fde68a;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🥤 Fluxo de Caixa</h1>
+  <p>Barraquinha de Bebidas</p>
+</header>
+
+<div id="avisoConfig" class="setup-aviso" style="display:none;">
+  ⚠️ Configure o Firebase no código (procure por <b>FIREBASE_CONFIG</b> no arquivo) para ativar a sincronização em tempo real entre os aparelhos.
+</div>
+
+<div class="saldo-card">
+  <div class="saldo-label">Saldo Atual</div>
+  <div class="saldo-valor" id="saldoValor">R$ 0,00</div>
+</div>
+
+<div class="resumo">
+  <div class="resumo-item entradas">
+    <div class="lbl">Entradas</div>
+    <div class="val" id="totalEntradas">R$ 0,00</div>
+  </div>
+  <div class="resumo-item saidas">
+    <div class="lbl">Saídas</div>
+    <div class="val" id="totalSaidas">R$ 0,00</div>
+  </div>
+</div>
+
+<section>
+  <h2>Venda Rápida</h2>
+  <div class="produtos" id="produtosGrid"></div>
+  <div class="gerenciar-produtos" onclick="editarProdutos()">✏️ editar produtos</div>
+</section>
+
+<section>
+  <h2>Lançamento Manual</h2>
+  <div class="form-manual">
+    <div class="tipo-toggle">
+      <div class="tipo-btn entrada-ativo" id="btnTipoEntrada" onclick="setTipo('entrada')">➕ Entrada</div>
+      <div class="tipo-btn" id="btnTipoSaida" onclick="setTipo('saida')">➖ Saída</div>
+    </div>
+    <div class="form-row">
+      <input type="text" id="descInput" placeholder="Descrição (ex: gelo, troco...)">
+    </div>
+    <div class="form-row">
+      <input type="number" id="valorInput" placeholder="Valor (R$)" inputmode="decimal" step="0.01">
+    </div>
+    <button class="btn-add" onclick="adicionarManual()">Adicionar</button>
+  </div>
+</section>
+
+<section>
+  <h2>Histórico</h2>
+  <div class="lista" id="listaMovimentos">
+    <div class="vazio">Nenhum lançamento ainda.</div>
+  </div>
+</section>
+
+<div class="status" id="statusConexao">conectando...</div>
+
+<script>
+/* =========================================================
+   1) CONFIGURAÇÃO DO FIREBASE
+   -----------------------------------------------------
+   Para os dados serem compartilhados EM TEMPO REAL entre
+   todos que acessarem o site, você precisa criar um projeto
+   gratuito no Firebase e colar as chaves abaixo.
+
+   PASSO A PASSO:
+   1. Acesse https://console.firebase.google.com
+   2. Clique em "Adicionar projeto" (é grátis)
+   3. Dentro do projeto, vá em "Compilação" > "Firestore Database"
+      e clique em "Criar banco de dados" (escolha modo de teste)
+   4. Vá em "Configurações do projeto" (ícone de engrenagem) >
+      role até "Seus apps" > clique no ícone "</>" (Web)
+   5. Dê um nome ao app e clique em "Registrar app"
+   6. Copie o objeto firebaseConfig que aparecer e cole abaixo,
+      substituindo o objeto de exemplo.
+   ========================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "COLE_AQUI",
+  authDomain: "COLE_AQUI.firebaseapp.com",
+  projectId: "COLE_AQUI",
+  storageBucket: "COLE_AQUI.appspot.com",
+  messagingSenderId: "COLE_AQUI",
+  appId: "COLE_AQUI"
+};
+
+let db = null;
+let firebaseAtivo = false;
+
+try {
+  if (FIREBASE_CONFIG.apiKey !== "COLE_AQUI") {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    firebaseAtivo = true;
+  } else {
+    document.getElementById('avisoConfig').style.display = 'block';
+  }
+} catch (e) {
+  console.error("Erro ao iniciar Firebase:", e);
+  document.getElementById('avisoConfig').style.display = 'block';
+}
+
+const COLECAO = "movimentos";
+
+/* =========================================================
+   2) PRODUTOS DA BARRAQUINHA (edite como quiser)
+   ========================================================= */
+let produtos = JSON.parse(localStorage.getItem('produtos') || 'null') || [
+  { nome: "Água", preco: 3 },
+  { nome: "Refrigerante", preco: 6 },
+  { nome: "Cerveja", preco: 8 },
+  { nome: "Suco", preco: 5 },
+  { nome: "Água de Coco", preco: 7 },
+  { nome: "Energético", preco: 10 }
+];
+
+function renderProdutos() {
+  const grid = document.getElementById('produtosGrid');
+  grid.innerHTML = '';
+  produtos.forEach(p => {
+    const btn = document.createElement('div');
+    btn.className = 'produto-btn';
+    btn.innerHTML = `<div class="nome">${p.nome}</div><div class="preco">R$ ${p.preco.toFixed(2)}</div>`;
+    btn.onclick = () => registrarVenda(p);
+    grid.appendChild(btn);
+  });
+}
+
+function editarProdutos() {
+  const texto = prompt(
+    "Edite os produtos no formato: Nome,Preço (um por linha)",
+    produtos.map(p => `${p.nome},${p.preco}`).join('\n')
+  );
+  if (texto === null) return;
+  try {
+    produtos = texto.split('\n').filter(l => l.trim()).map(linha => {
+      const [nome, preco] = linha.split(',');
+      return { nome: nome.trim(), preco: parseFloat(preco) };
+    });
+    localStorage.setItem('produtos', JSON.stringify(produtos));
+    renderProdutos();
+  } catch (e) {
+    alert("Formato inválido. Use: Nome,Preço");
+  }
+}
+
+/* =========================================================
+   3) LÓGICA DE MOVIMENTOS (entradas e saídas)
+   ========================================================= */
+let tipoAtual = 'entrada';
+
+function setTipo(tipo) {
+  tipoAtual = tipo;
+  document.getElementById('btnTipoEntrada').className = 'tipo-btn' + (tipo === 'entrada' ? ' entrada-ativo' : '');
+  document.getElementById('btnTipoSaida').className = 'tipo-btn' + (tipo === 'saida' ? ' saida-ativo' : '');
+}
+
+function registrarVenda(produto) {
+  adicionarMovimento(produto.nome, produto.preco, 'entrada');
+}
+
+function adicionarManual() {
+  const desc = document.getElementById('descInput').value.trim();
+  const valor = parseFloat(document.getElementById('valorInput').value);
+  if (!desc || isNaN(valor) || valor <= 0) {
+    alert('Preencha uma descrição e um valor válido.');
+    return;
+  }
+  adicionarMovimento(desc, valor, tipoAtual);
+  document.getElementById('descInput').value = '';
+  document.getElementById('valorInput').value = '';
+}
+
+function adicionarMovimento(descricao, valor, tipo) {
+  const mov = {
+    descricao,
+    valor: Math.abs(valor),
+    tipo,
+    timestamp: Date.now()
+  };
+
+  if (firebaseAtivo) {
+    db.collection(COLECAO).add(mov).catch(e => {
+      console.error(e);
+      alert('Erro ao salvar. Verifique sua conexão.');
+    });
+  } else {
+    // Modo local (sem Firebase configurado) - fica só neste aparelho
+    const locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
+    mov.id = 'local-' + Date.now();
+    locais.unshift(mov);
+    localStorage.setItem('movimentosLocais', JSON.stringify(locais));
+    renderTudo(locais);
+  }
+}
+
+function excluirMovimento(id) {
+  if (!confirm('Excluir este lançamento?')) return;
+  if (firebaseAtivo) {
+    db.collection(COLECAO).doc(id).delete();
+  } else {
+    let locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
+    locais = locais.filter(m => m.id !== id);
+    localStorage.setItem('movimentosLocais', JSON.stringify(locais));
+    renderTudo(locais);
+  }
+}
+
+function formatarMoeda(v) {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatarHora(ts) {
+  return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderTudo(movimentos) {
+  movimentos.sort((a, b) => b.timestamp - a.timestamp);
+
+  let totalEntradas = 0, totalSaidas = 0;
+  movimentos.forEach(m => {
+    if (m.tipo === 'entrada') totalEntradas += m.valor;
+    else totalSaidas += m.valor;
+  });
+  const saldo = totalEntradas - totalSaidas;
+
+  document.getElementById('saldoValor').textContent = formatarMoeda(saldo);
+  document.getElementById('totalEntradas').textContent = formatarMoeda(totalEntradas);
+  document.getElementById('totalSaidas').textContent = formatarMoeda(totalSaidas);
+
+  const lista = document.getElementById('listaMovimentos');
+  if (movimentos.length === 0) {
+    lista.innerHTML = '<div class="vazio">Nenhum lançamento ainda.</div>';
+    return;
+  }
+
+  lista.innerHTML = '';
+  movimentos.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `
+      <div>
+        <div class="desc">${m.tipo === 'entrada' ? '➕' : '➖'} ${m.descricao}</div>
+        <div class="hora">${formatarHora(m.timestamp)}</div>
+      </div>
+      <div style="display:flex; align-items:center;">
+        <div class="valor ${m.tipo}">${m.tipo === 'entrada' ? '+' : '-'} ${formatarMoeda(m.valor)}</div>
+        <div class="del" onclick="excluirMovimento('${m.id}')">🗑️</div>
+      </div>
+    `;
+    lista.appendChild(div);
+  });
+}
+
+/* =========================================================
+   4) CONEXÃO EM TEMPO REAL
+   ========================================================= */
+const statusEl = document.getElementById('statusConexao');
+
+if (firebaseAtivo) {
+  db.collection(COLECAO).onSnapshot(snapshot => {
+    const movimentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderTudo(movimentos);
+    statusEl.textContent = 'sincronizado em tempo real';
+    statusEl.className = 'status online';
+  }, err => {
+    console.error(err);
+    statusEl.textContent = 'erro de conexão';
+    statusEl.className = 'status offline';
+  });
+} else {
+  statusEl.textContent = 'modo local (configure o Firebase para sincronizar entre aparelhos)';
+  statusEl.className = 'status offline';
+  const locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
+  renderTudo(locais);
+}
+
+renderProdutos();
+</script>
+
+</body>
+</html>
