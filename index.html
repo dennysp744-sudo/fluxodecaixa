@@ -398,6 +398,8 @@ async function adicionarMovimento(descricao, valor, tipo) {
     if (error) {
       console.error(error);
       alert('Erro ao salvar. Verifique sua conexão.');
+    } else {
+      carregarMovimentos();
     }
   } else {
     // Modo local (sem Supabase configurado) - fica só neste aparelho
@@ -416,6 +418,8 @@ async function excluirMovimento(id) {
     if (error) {
       console.error(error);
       alert('Erro ao excluir. Verifique sua conexão.');
+    } else {
+      carregarMovimentos();
     }
   } else {
     let locais = JSON.parse(localStorage.getItem('movimentosLocais') || '[]');
