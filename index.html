@@ -328,6 +328,24 @@ let produtos = JSON.parse(localStorage.getItem('produtos') || 'null') || [
   { nome: "Energético", preco: 10 }
 ];
 
+const TABELA_PRODUTOS = "produtos";
+
+async function carregarProdutos() {
+  if (!supabaseAtivo) return;
+  const { data, error } = await supabaseClient.from(TABELA_PRODUTOS).select('lista').eq('id', 1).maybeSingle();
+  if (error) {
+    console.error(error);
+    return;
+  }
+  if (data && data.lista) {
+    produtos = data.lista;
+  } else {
+    // Ainda não existe linha salva: cria com a lista padrão atual
+    await supabaseClient.from(TABELA_PRODUTOS).upsert({ id: 1, lista: produtos });
+  }
+  renderProdutos();
+}
+
 function renderProdutos() {
   const grid = document.getElementById('produtosGrid');
   grid.innerHTML = '';
@@ -340,21 +358,33 @@ function renderProdutos() {
   });
 }
 
-function editarProdutos() {
+async function editarProdutos() {
   const texto = prompt(
     "Edite os produtos no formato: Nome,Preço (um por linha)",
     produtos.map(p => `${p.nome},${p.preco}`).join('\n')
   );
   if (texto === null) return;
+  let novaLista;
   try {
-    produtos = texto.split('\n').filter(l => l.trim()).map(linha => {
+    novaLista = texto.split('\n').filter(l => l.trim()).map(linha => {
       const [nome, preco] = linha.split(',');
       return { nome: nome.trim(), preco: parseFloat(preco) };
     });
-    localStorage.setItem('produtos', JSON.stringify(produtos));
-    renderProdutos();
   } catch (e) {
     alert("Formato inválido. Use: Nome,Preço");
+    return;
+  }
+
+  produtos = novaLista;
+  localStorage.setItem('produtos', JSON.stringify(produtos));
+  renderProdutos();
+
+  if (supabaseAtivo) {
+    const { error } = await supabaseClient.from(TABELA_PRODUTOS).upsert({ id: 1, lista: produtos });
+    if (error) {
+      console.error(error);
+      alert('Salvou só neste aparelho — houve um erro ao compartilhar com os outros.');
+    }
   }
 }
 
@@ -496,12 +526,16 @@ async function carregarMovimentos() {
 if (supabaseAtivo) {
   // Carrega os dados já existentes
   carregarMovimentos();
+  carregarProdutos();
 
   // Escuta em tempo real qualquer inserção/exclusão feita por qualquer aparelho
   supabaseClient
     .channel('movimentos-tempo-real')
     .on('postgres_changes', { event: '*', schema: 'public', table: TABELA }, () => {
       carregarMovimentos();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABELA_PRODUTOS }, () => {
+      carregarProdutos();
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
